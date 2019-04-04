@@ -57,13 +57,22 @@ int main() {
     TRISA = 0b01111;
     TRISB = 0b10000;
     LATA = 0b10000;
+    
     __builtin_enable_interrupts();
     _CP0_SET_COUNT(0);
     while(1) {
 	// use _CP0_SET_COUNT(0) and _CP0_GET_COUNT() to test the PIC timing
 	// remember the core timer runs at half the sysclk
-        //if(_CP0_GET_COUNT() == 24000){
-            
+        while(!PORTBbits.RB4) {
+        ;   // Pin B4 is the USER switch, low (FALSE) if pressed.
+    }
+       LATA = 0b10000;
+       if( _CP0_GET_COUNT() > 12000){
+           LATA = 0b00000;
+           _CP0_SET_COUNT(0);
+           while(_CP0_GET_COUNT()<12000){;}
+           _CP0_SET_COUNT(0);
+       }
         //}
     }
 }
