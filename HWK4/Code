@@ -1,0 +1,93 @@
+#include "PIC32.h"       // constants, funcs for startup and UART
+#include <math.h> 	//for sine wave plotting
+
+// SDO1 -> SDI (pin B11 -> SDI)
+// SDI1 -> SDO (Not connected)
+// SCK1 -> SCK (pin B14 -> SCK)
+// SS4 -> CS (pin B7 -> CS)
+// 
+// Only uses the SRAM's sequential mode
+//
+#define CS LATBbits.LATB7       // chip select pin
+        
+void init_SPI1(void) {
+    ANSELB = 0;
+    RPB3Rbits.RPB3R = 0b0011;  //select SS1 to be in B3
+    SDI1Rbits.SDI1R = 0b0100; //Use B8 as SDI1
+    RPB11Rbits.RPB11R = 0b0011; //select SDO1 to be in B11
+    TRISBbits.TRISB7 = 0;    //Use B7 as SS
+    CS = 1;
+
+    // Master - SPI1, pins are: SDI1()(not used), SDO1(B11), SCK1(B14).  
+    // we manually control SS1 as a digital output (B7)
+    // since the pic is just starting, we know that spi is off. We rely on defaults here
+
+    // setup spi1 , all bits must be changed for SPI1 from SPI4
+    SPI1CON = 0;              // turn off the spi module and reset it
+    SPI1BUF;                  // clear the rx buffer by reading from it
+    SPI1BRG = 1;            // baud rate to 20 MHz [SPI4BRG = (80000000/(2*desired))-1]
+    SPI1STATbits.SPIROV = 0;  // clear the overflow bit
+    SPI1CONbits.CKE = 1;      // data changes when clock goes from hi to lo (since CKP is 0)
+    //SPI1CONbits.MODE16 = 1;   // 16 bit mode
+    //SPI1CONbits.MODE32 = 0;
+    SPI1CONbits.MSTEN = 1;    // master operation
+    SPI1CONbits.ON = 1;       // turn on spi 1
+}
+
+// send a byte via spi and return the response
+unsigned char spi_io(unsigned char o) {
+  SPI1BUF = o;
+  while(!SPI1STATbits.SPIRBF) { // wait to receive the byte
+    ;
+  }
+  return SPI1BUF;
+}
+
+void setVoltage(char a, int v) {
+	unsigned short t = 0;
+	t= a << 15; //a is at the very end of the data transfer (if 0 writes to DACA if 1 writes to DACB)
+	t = t | 0b0111000000000000; //16bits, set BGS (Buffer, GAIN, SHDN) to high
+	t = t | ((v&0b1111111111) <<2); //rejecting excessive bits (above 10) and moves bit to 11-2 bits leaving 1-0 bits as zero
+	
+	CS = 0; //Prepares for transfer
+	spi_io(t>>8); //Sends high bits (first byte)
+    spi_io(t);//Sends low bits (second byte)
+	CS = 1;
+}
+
+
+int main(void) {
+  float i;
+  int A = 512;
+  int P = 100;
+  int x;
+  PIC32_Startup();   // cache on, interrupts on, LED/button init, UART init
+  init_SPI1();  
+
+  while(1) {
+   _CP0_SET_COUNT(0);
+	// use _CP0_SET_COUNT(0) and _CP0_GET_COUNT() to test the PIC timing
+	// remember the core timer runs at half the sysclk
+    //    while(!PORTBbits.RB4) {
+    //    ;   // Pin B4 is the USER switch, low (FALSE) if pressed.
+    //}
+    //   LATAbits.LATA4 = 1;
+    //   if( _CP0_GET_COUNT() > 12000){ //0.5ms
+    //       LATAbits.LATA4 = 0;
+    //       _CP0_SET_COUNT(0);
+    //       while(_CP0_GET_COUNT()<12000){;} //0.5ms
+    //       _CP0_SET_COUNT(0);
+   //    }
+  //   LATA = 0b00000;
+    float f = 512 + 512*sin(i*3.14/50);  //should make a 10Hz sin wave)
+  	i++;
+    float j = (A/P) * (P - abs(x % (2*P) - P) ); 
+    x++;
+
+  	setVoltage(1,(int) f);		
+  	setVoltage(0,(int) j);		
+
+  while(_CP0_GET_COUNT() < 24000) {}  //check this is 24Million
+  }
+  return 0;
+}
